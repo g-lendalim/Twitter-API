@@ -93,11 +93,11 @@ app.delete("/likes/:id", async (req, res) => {
   }
 });
 
+//Endpoint to get likes for a specific post
 app.get("/likes/post/:post_id", async (req, res) => {
   const { post_id } = req.params;
   const client = await pool.connect();
   try {
-    //Fetch all likes for the specific post
     const likes = await client.query(
       "SELECT users.username FROM likes INNER JOIN users ON likes.user_id = users.id WHERE likes.post_id = $1",
       [post_id],
@@ -106,6 +106,27 @@ app.get("/likes/post/:post_id", async (req, res) => {
   } catch (err) {
     console.error(err.stack);
     res.status(500).send("An error occurred, please try again.");
+  } finally {
+    client.release();
+  }
+});
+
+app.get("/posts/user/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  const client = await pool.connect();
+
+  try {
+    const posts = await client.query("SELECT * FROM posts WHERE user_id = $1", [
+      user_id,
+    ]);
+    if (posts.rowCount > 0) {
+      res.json(posts.rows);
+    } else {
+      res.status(404).json({ error: "No posts found for this user" });
+    }
+  } catch (error) {
+    console.error("Error", error.message);
+    res.status(500).json({ error: error.message });
   } finally {
     client.release();
   }
