@@ -1,6 +1,7 @@
 let express = require("express");
 const cors = require("cors");
 const { Pool } = require("pg");
+const { queryObjects } = require("v8");
 const { DATABASE_URL } = process.env;
 require("dotenv").config();
 
@@ -25,6 +26,27 @@ async function getPostgresVersion() {
   }
 }
 getPostgresVersion();
+
+app.get("/posts/user/:user_id", async (req, res) => {
+  const { user_id } = req.params;
+  const client = await pool.connect();
+
+  try {
+    const posts = await client.query("SELECT * FROM posts WHERE user_id = $1", [
+      user_id,
+    ]);
+    if (posts.rowCount > 0) {
+      res.json(posts.rows);
+    } else {
+      res.status(404).json({ error: "No posts found for this user" });
+    }
+  } catch (error) {
+    console.error("Error", error.message);
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
 
 app.post("/posts", async (req, res) => {
   const { title, content, user_id } = req.body;
@@ -56,33 +78,12 @@ app.post("/posts", async (req, res) => {
   }
 });
 
-app.get("/posts/user/:user_id", async (req, res) => {
-  const { user_id } = req.params;
-  const client = await pool.connect();
-
-  try {
-    const posts = await client.query("SELECT * FROM posts WHERE user_id = $1", [
-      user_id,
-    ]);
-    if (posts.rowCount > 0) {
-      res.json(posts.rows);
-    } else {
-      res.status(404).json({ error: "No posts found for this user" });
-    }
-  } catch (error) {
-    console.error("Error", error.message);
-    res.status(500).json({ error: error.message });
-  } finally {
-    client.release();
-  }
-});
-
-//Adding a like to a post
+//Endpoint to like a post
 app.post("/likes", async (req, res) => {
   const { user_id, post_id } = req.body;
   const client = await pool.connect();
 
- try {
+  try {
     //check if an inactive like for this user and post already exists
     const prevLike = await client.query(
       `
@@ -112,30 +113,6 @@ app.post("/likes", async (req, res) => {
       );
       res.json(newLike.rows[0]);
     }
-  } catch (error) {
-    console.error("Error", error.message);
-    res.status(500).json({ error: error.message });
-  } finally {
-    client.release();
-  }
-});
-
-//Endpoint to unlike a post
-app.put("/likes/:userId/:postId", async (req, res) => {
-  const { userId, postId } = req.params;
-  const client = await pool.connect();
-
-  try {
-    //Update the like row to inactive
-    await client.query(
-      `
-      UPDATE likes
-      SET active = false
-      WHERE user_id = $1 AND post_id = $2 AND active = true
-    `,
-      [userId, postId],
-    );
-    res.json({ message: "The like has been removed successfully!" });
   } catch (error) {
     console.error("Error", error.message);
     res.status(500).json({ error: error.message });
@@ -176,6 +153,30 @@ app.get("/likes/post/:post_id", async (req, res) => {
     );
     res.json(likes.rows);
   } catch (error) {
+    console.error(error.message);
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+//Endpoint to unlike a post
+app.put("/likes/:userId/:postId", async (req, res) => {
+  const { userId, postId } = req.params;
+  const client = await pool.connect();
+
+  try {
+    //Update the like row to inactive
+    await client.query(
+      `
+      UPDATE likes
+      SET active = false
+      WHERE user_id = $1 AND post_id = $2 AND active = true
+    `,
+      [userId, postId],
+    );
+    res.json({ message: "The like has been removed successfully!" });
+  } catch (error) {
     console.error("Error", error.message);
     res.status(500).json({ error: error.message });
   } finally {
@@ -190,3 +191,4 @@ app.get("/", (req, res) => {
 app.listen(3000, () => {
   console.log("App is listening on port 3000");
 });
+
